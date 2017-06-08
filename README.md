@@ -8,5 +8,12 @@ Current examples available:
   * grid to grid (first-order conservative)
   * points to grid
   * grid to points
+  * parallel grid to grid via MPI (bilinear)
+
+### Running the parallel regrid example
+Replace NPROCS with the number of processes you want to use and be sure `mpi4py` is installed.
+```bash
+mpirun -n NPROCS python esmpy_mpi_example.py
+```
 
 Questions about this tutorial? Have an example you would like to see? Contact me or submit an issue and I'll see what I can do to help. If you have specific questions about the ESMPy software or its development, you will be much better served by getting into contact with the actual ESMPy developers (I am _not_ one, just a happy user) at [esmf_support@list.woc.noaa.gov](mailto:esmf_support@list.woc.noaa.gov).
