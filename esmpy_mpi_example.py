@@ -4,9 +4,9 @@ of the parallel components from the user so that very few calls to mpi4py method
 """
 
 import ESMF
+import matplotlib.pyplot as plt
 from mpi4py import MPI
 import numpy as np
-import matplotlib.pyplot as plt
 
 #################### CONFIG ####################
 # This is the variable that will be interpolated. A few others are possible.
@@ -14,10 +14,10 @@ IVAR = 'dpc'
 
 # This will  toggle the use of the `Gatherv` method. The `Gatherv` method can
 # send unequal chunks of numpy arrays to other MPI processes. This will 
-# **generally** be faster than the `gather` method that sens python objects.
+# **generally** be faster than the `gather` method that sends python objects.
 # From my limited experience, `Gatherv` is faster for larger grids, but not grids
 # that are as small as being used in this example. As always, test for yourself
-# on your system to determine the best choice for your particular case.
+# on your system to determine the best choice for your particular use case.
 GATHERV = True
 
 # Toggle some informative print statements
@@ -89,11 +89,11 @@ slon = sourcegrid.get_coords(0)
 
 # The bounds are critical when doing parallel regridding. ESMPy abstracts much of the MPI
 # environment setup from the user. Perhaps the best part of that abstraction is the ability
-# to not worry about load balancing. ESMPy will split your work up for you (along dimension 0)
-# The bounds are then stored within the `Grid` object on each spawned process. These bounds will
-# have to be used to subset all coordinate and data movement for the script (this includes the mask
-# as well). Given how the bounds work, you can still run this script in serial mode and still be
-# able to regrid your data.
+# to not worry about scattering the data amongst the processes (load balancing is *not* done).
+# ESMPy will split your work up for you (along dimension 0). The bounds are then stored within the
+#`Grid` object on each spawned process. These bounds will have to be used to subset all coordinate
+# and data movement for the script (this includes the mask as well). Given how the bounds work, you 
+# can still run this script in serial mode and still be able to regrid your data.
 x_lower_bound, x_upper_bound, y_lower_bound, y_upper_bound = get_processor_bounds(sourcegrid, ESMF.StaggerLoc.CENTER)
 
 # We can see exactly how ESMPy has split the grid up here
@@ -175,7 +175,7 @@ if GATHERV:
     # Using `Gatherv` we can send the destination field data to the final array on the root process
     # and place the data in the right location. One quirk of this approach is the need to call the
     # numpy `ascontiguousarray` method on the data being sent. Without doing this the data coming
-    # out of ESMPy will be out of order for what `Gatherv` is expecting, leading to a awkwardly
+    # out of ESMPy will be out of order for what `Gatherv` is expecting, leading to an awkwardly
     # striped array.
     comm.Gatherv(np.ascontiguousarray(destfield.data), [final, sendcounts, displacements, MPI.DOUBLE], root=0)
 else:
@@ -186,8 +186,8 @@ else:
     final = comm.gather(destfield.data, root=0)
     if rank == 0:
         # This method does not place all the data in the same array, but places each piece
-        # in a list/array, again in rank order. With that list/array, we can concatenate the
-        # pieces back together to create full array again.
+        # in a list/array, again, in rank order. With that list/array, we can concatenate the
+        # pieces back together to create the full array again.
         final = np.concatenate([final[i] for i in range(size)], axis=0)
 
 if rank ==  0:
