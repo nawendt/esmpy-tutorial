@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 This is an example script showing how to do parallel regridding with ESMPy. ESMPy abstracts some
 of the parallel components from the user so that very few calls to mpi4py methods are necessary.
@@ -8,7 +10,14 @@ import matplotlib.pyplot as plt
 from mpi4py import MPI
 import numpy as np
 
-#################### CONFIG ####################
+__author__ = "Nathan Wendt"
+__copyright__ = "Copyright 2017"
+__email__ = "nawendt@ou.edu"
+__license__ = "MIT"
+__maintainer__ = "Nathan Wendt"
+__version__ = "1.0.1"
+
+############################################# CONFIG #############################################
 # This is the variable that will be interpolated. A few others are possible.
 IVAR = 'dpc'
 
@@ -25,7 +34,15 @@ VERBOSE = True
 
 # Toggle plot, saves otherwise
 PLOT = True
-##############################################
+
+# Below, you will see arrays that are transposed. This is done to get the arrays into Fortran
+# contiguous memory order. ESMF subroutines that are called are written in Fortran and passing
+# arrays with their native memory order will help improve efficiency. Unfortunately, these
+# changes can make the logic of the script less intuitive. The efficiency gain will mostly affect
+# larger grid sizes. The good news is that you can remove the the transpose (`.T`) calls from the
+# arrays and go back to the original, straightforward code without a problem.
+FORTRAN_CONTIGUOUS = True
+##################################################################################################
 
 def get_processor_bounds(target, staggerloc):
     """
@@ -35,8 +52,8 @@ def get_processor_bounds(target, staggerloc):
     :rtype: tuple
     """
 
-    # The lower_bounds and upper_bounds properties give us global indices of the processor local bounds.
-    # The assumed dimension order is Z, Y, X (based on the data being used in this example)
+    # The lower_bounds and upper_bounds properties give us global indices of the processor local
+    # bounds. The assumed dimension order is Z, Y, X (based on the data being used in this example)
 
     x_lower_bound = target.lower_bounds[staggerloc][1]
     x_upper_bound = target.upper_bounds[staggerloc][1]
@@ -50,29 +67,38 @@ ESMF.Manager(debug=True)
 
 # Set up MPI communicator and get environment information
 comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
+rank = comm.rank
+size = comm.size
 
 if rank == 0 and VERBOSE:
     print('Loading data...')
 
 #RUC Grid (this will be the source grid)
 with np.load('ruc2_130_20120414_1200_006.npz') as ruc:
-    dat = ruc[IVAR]
-    rlat = ruc['lat']
-    rlon = ruc['lon']
+    if FORTRAN_CONTIGUOUS:
+        dat = ruc[IVAR].T
+        rlat = ruc['lat'].T
+        rlon = ruc['lon'].T
+    else:
+        dat = ruc[IVAR]
+        rlat = ruc['lat']
+        rlon = ruc['lon']
 
 # NAM grid (this will be the destination grid)
 with np.load('nam_218_20120414_1200_006.npz') as nam:
-    nlat = nam['lat']
-    nlon = nam['lon']
+    if FORTRAN_CONTIGUOUS:
+        nlat = nam['lat'].T
+        nlon = nam['lon'].T
+    else:
+        nlat = nam['lat']
+        nlon = nam['lon']
 
 if GATHERV:
     # When using the `Gatherv` method the final output will be gathered on the root 
-    # process (rank = 0 in this case). It is faster to call np.empty vs. np.zeros. We 
-    # know we will fill it with data in the end so the random input bits should not 
-    # matter here. All other processes should also have the variable defined as 
-    # the None object.
+    # process (rank = 0 in this case). It is faster to call `numpy.empty` vs.
+    # `numpy.zeros`. We know we will fill it with data in the end so the random input
+    # bits should not matter here. All other processes should also have the variable
+    # defined as the None object.
     if rank == 0:
         final = np.empty(nlat.shape)
     else:
@@ -81,9 +107,8 @@ if GATHERV:
 # Set up the source grid
 if rank == 0 and VERBOSE:
     print('Source grid setup...')
-sourcegrid = ESMF.Grid(np.asarray(rlat.shape),
-                                          coord_sys=ESMF.CoordSys.SPH_DEG,
-                                          staggerloc=ESMF.StaggerLoc.CENTER)
+sourcegrid = ESMF.Grid(np.asarray(rlat.shape), coord_sys=ESMF.CoordSys.SPH_DEG,
+                       staggerloc=ESMF.StaggerLoc.CENTER)
 slat = sourcegrid.get_coords(1)
 slon = sourcegrid.get_coords(0)
 
@@ -92,7 +117,7 @@ slon = sourcegrid.get_coords(0)
 # to not worry about scattering the data amongst the processes (load balancing is *not* done).
 # ESMPy will split your work up for you (along dimension 0). The bounds are then stored within the
 #`Grid` object on each spawned process. These bounds will have to be used to subset all coordinate
-# and data movement for the script (this includes the mask as well). Given how the bounds work, you 
+# and data movement for the script (this includes the mask as well). Given how the bounds work, you
 # can still run this script in serial mode and still be able to regrid your data.
 x_lower_bound, x_upper_bound, y_lower_bound, y_upper_bound = get_processor_bounds(sourcegrid, ESMF.StaggerLoc.CENTER)
 
@@ -102,7 +127,7 @@ if VERBOSE:
     comm.Barrier()
     print('Process Rank {} :: Bounds {}'.format(rank, get_processor_bounds(sourcegrid, ESMF.StaggerLoc.CENTER)))
 
-# Input the coordinates into the source grid. Recall our dimension order of ZYX
+# Input the coordinates into the source grid. Recall our dimension order of ZYX.
 slat[...] = rlat[y_lower_bound:y_upper_bound, x_lower_bound:x_upper_bound]
 slon[...] = rlon[y_lower_bound:y_upper_bound, x_lower_bound:x_upper_bound]
 
@@ -114,12 +139,12 @@ sourcefield.data[...] = dat[y_lower_bound:y_upper_bound, x_lower_bound:x_upper_b
 if rank == 0 and VERBOSE:
     print('Destination grid setup...')
 destgrid = ESMF.Grid(np.asarray(nlat.shape),
-                                       coord_sys=ESMF.CoordSys.SPH_DEG,
-                                       staggerloc=ESMF.StaggerLoc.CENTER)
+                     coord_sys=ESMF.CoordSys.SPH_DEG,
+                     staggerloc=ESMF.StaggerLoc.CENTER)
 dlat = destgrid.get_coords(1)
 dlon = destgrid.get_coords(0)
 
-# Get the bounds for the destination grid. For simplicity I have just overwritten the values
+# Get the bounds for the destination grid. For simplicity, I have just overwritten the values
 # grabbed from the source grid.
 x_lower_bound, x_upper_bound, y_lower_bound, y_upper_bound = get_processor_bounds(destgrid, ESMF.StaggerLoc.CENTER)
 
@@ -135,7 +160,7 @@ destfield = ESMF.Field(destgrid, name='Interpolated NAM 2 m Dewpoint')
 if rank == 0 and VERBOSE:
     print('Calculating regridding weights...')
 regrid = ESMF.Regrid(sourcefield, destfield, regrid_method=ESMF.RegridMethod.BILINEAR,
-                                      unmapped_action=ESMF.UnmappedAction.IGNORE)
+                     unmapped_action=ESMF.UnmappedAction.IGNORE)
 
 # Do the actual regrid
 if rank == 0 and VERBOSE:
@@ -174,14 +199,14 @@ if GATHERV:
 
     # Using `Gatherv` we can send the destination field data to the final array on the root process
     # and place the data in the right location. One quirk of this approach is the need to call the
-    # numpy `ascontiguousarray` method on the data being sent. Without doing this the data coming
-    # out of ESMPy will be out of order for what `Gatherv` is expecting, leading to an awkwardly
-    # striped array.
+    # `numpy.ascontiguousarray` function on the data being sent. Without doing this the data coming
+    # out of ESMPy will be out of order (Fortran, column-major) for what `Gatherv` is expecting
+    # (C, row-major), leading to an awkwardly striped array.
     comm.Gatherv(np.ascontiguousarray(destfield.data), [final, sendcounts, displacements, MPI.DOUBLE], root=0)
 else:
     if rank == 0 and VERBOSE:
         print('**Using gather method**')
-    # This the simpler `gather` method that sends the array as a python object. There is no need
+    # This is the simpler `gather` method that sends the array as a python object. There is no need
     # for counts or displacements.
     final = comm.gather(destfield.data, root=0)
     if rank == 0:
@@ -198,10 +223,16 @@ if rank ==  0:
         # "box" of zeros around them. That is because we have interpolated the smaller
         # RUC grid extent to the larger NAM grid extent. No extrapolation is done where
         # points are not mapped so they remain zeros by default.
-        plt.pcolormesh(final)
+        if FORTRAN_CONTIGUOUS:
+            plt.pcolormesh(final.T)
+        else:
+            plt.pcolormesh(final)
         plt.colorbar()
         plt.show()
     else:
         if VERBOSE:
             print('Saving...')
-        np.savez_compressed('esmpy_mpi_regrid', dat=final)
+        if FORTRAN_CONTIGUOUS:
+            np.savez_compressed('esmpy_mpi_regrid', dat=final.T)
+        else:
+            np.savez_compressed('esmpy_mpi_regrid', dat=final)
