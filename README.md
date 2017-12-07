@@ -10,6 +10,8 @@ Current examples available:
   * grid to points
   * parallel grid to grid via MPI (bilinear)
 
+Plots in this tutorial are created using [cartopy](https://github.com/SciTools/cartopy). Previous versions were created using basemap. A branch containing the old basemap version is around for now, but will be deleted at some point.
+
 ### Running the parallel regrid example
 Replace NPROCS with the number of processes you want to use and be sure `mpi4py` is installed.
 ```bash
