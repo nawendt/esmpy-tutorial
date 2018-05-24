@@ -12,7 +12,7 @@ import numpy as np
 
 __author__ = "Nathan Wendt"
 __copyright__ = "Copyright 2017"
-__email__ = "nawendt@ou.edu"
+__email__ = "nathan.wendt@noaa.gov"
 __license__ = "MIT"
 __maintainer__ = "Nathan Wendt"
 __version__ = "1.0.1"
